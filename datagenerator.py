@@ -1,33 +1,92 @@
+from configparser import ConfigParser
 import numpy as np
 from matplotlib import pyplot as plt
 import random
 import math
 import itertools
 import raster_geometry as rg
-NUMBER_OF_CASES = 100
-BACKGROUND_SIZE = 50  # 10 < N < 50
-OFFSET = 1  # Offset from img border
-LINE_WIDTH = 1
-IMAGE_SIZE = 20
-NOISE_LEVEL = 0.01  # Fraction of pixels 0-1
+
+config = ConfigParser()
+config.read('config.ini')
+datagen = config['datagen']
+BACKGROUND_SIZE = int(datagen['background_size'])  # 10 < N < 50
+OFFSET = int(datagen['offset'])  # Offset from img border
+LINE_WIDTH = int(datagen['line_width'])
+IMAGE_SIZE = int(datagen['image_size'])
+NOISE_LEVEL = float(datagen['noise_level'])  # Fraction of pixels 0-1
 
 
 class DataGenerator():
+    id_class = {0: 'Cross',
+                1: 'Rectangle',
+                2: 'Circle',
+                3: 'Triangle'}
+
+    def display_N_pictures(self, N):
+        samples = random.sample(self.cases_labels, N)
+        for vec, onehot in samples:
+            img = vec.reshape(BACKGROUND_SIZE, BACKGROUND_SIZE)
+            class_id = DataGenerator.onehot_to_index(onehot)
+            class_name = DataGenerator.id_class[class_id]
+            plt.imshow(img)
+            plt.title(class_name)
+            plt.show()
+
     @staticmethod
-    def make_cases():
+    def index_to_onehot(index):
+        onehot = [0 for _ in range(len(DataGenerator.id_class))]
+        onehot[index] = 1
+        return onehot
+
+    @staticmethod
+    def onehot_to_index(on_hot):
+        return list(on_hot).index(1.0)
+
+    def make_cases(self, number_of_cases, train_val_test_split=(0.70, 0.15, 0.15), flatten=True):
+        """
+        Returns generated data for training. validation and testing
+
+        :param tuple train_val_test_split: fraction of samples used for train, val and test phase
+        :param bool flatten: decide if samples should be returned in flattened format or not
+        returns (trainX,trainY, valX, valY, testX, testY)
+        """
+        if(sum(train_val_test_split) != 1.0):
+            raise Exception('Split fractions does not add up to 1.0')
         case_base = []
-        # Change next two lines if number of classes changes
-        per_class = NUMBER_OF_CASES//4
-        extra_for_last_class = NUMBER_OF_CASES % 4
+        labels = []
+        number_of_classes = len(Image.__subclasses__())
+        per_class = number_of_cases // number_of_classes
+        extra_for_last_class = number_of_cases % number_of_classes
         for _ in range(per_class):
-            case_base.append(Cross().image.flatten())
-            case_base.append(Rectangle().image.flatten())
-            case_base.append(Circle().image.flatten())
-            case_base.append(Triangle().image.flatten())
+            case_base.append(Cross().image)
+            labels.append(self.index_to_onehot(0))
+
+            case_base.append(Rectangle().image)
+            labels.append(self.index_to_onehot(1))
+
+            case_base.append(Circle().image)
+            labels.append(self.index_to_onehot(2))
+
+            case_base.append(Triangle().image)
+            labels.append(self.index_to_onehot(3))
+
         for _ in range(extra_for_last_class):
-            case_base.append(Triangle().flatten())
-        random.shuffle(case_base)
-        return case_base
+            case_base.append(Triangle().image)
+            labels.append(self.index_to_onehot(3))
+
+        if(flatten):
+            case_base = [x.flatten() for x in case_base]
+        c = list(zip(case_base, labels))
+        random.shuffle(c)
+        case_base, labels = zip(*c)
+        case_base, labels = np.stack(case_base, axis=0), np.stack(labels, axis=0)
+        self.cases_labels = list(zip(case_base, labels))
+        train_index = int(number_of_cases * train_val_test_split[0])
+        val_index = train_index + int(number_of_cases * train_val_test_split[1])
+
+        return (case_base[:train_index], labels[:train_index],
+                case_base[train_index:val_index], labels[train_index:val_index],
+                case_base[val_index:], labels[val_index:])
 
 
 class Image():
@@ -74,7 +133,7 @@ class Rectangle(Image):
             rand_row_2 = random.randint(OFFSET, BACKGROUND_SIZE - (OFFSET + LINE_WIDTH))
             col_gap = abs(rand_col_1 - rand_col_2)
             row_gap = abs(rand_row_1 - rand_row_2)
-            if(col_gap > 2 and row_gap > 2):
+            if(col_gap > 3 and row_gap > 3):
                 break
         min_row, max_row = min(rand_row_1, rand_row_2), max(rand_row_1, rand_row_2)
         min_col, max_col = min(rand_col_1, rand_col_2), max(rand_col_1, rand_col_2)
@@ -124,6 +183,4 @@ class Triangle(Image):
 
 
 if __name__ == "__main__":
-    x = DataGenerator.make_cases()
-    for fig in x[:2]:
-        print(list(fig))
+    pass
